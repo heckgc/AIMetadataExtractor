@@ -1,6 +1,9 @@
 # AIMetadataExtractor
 Allows you to extract embedded metadata information from images generated from AI sources
 
+# Live preview
+It is available at https://heckgc.pythonanywhere.com/ for live preview.
+
 ## UI
 ![page1](/docs/page1.png)
 ![page2](/docs/page2.png)
