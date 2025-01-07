@@ -1,6 +1,10 @@
 # AIMetadataExtractor
 Allows you to extract embedded metadata information from images generated from AI sourcers
 
+## UI
+![page1](/docs/page1.png)
+![page2](/docs/page2.png)
+
 ## Features
 This runs entirely locally, is fast and reliable, and work with any kind of image (that contains any kind of embedded information).
 It makes use of [Flask]() and [Python]() to run a microserver, allowing you easy access to image information.
