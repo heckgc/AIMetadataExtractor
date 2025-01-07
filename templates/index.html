@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>AIMetadataExtractor - Upload and Display Image Metadata</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<video class="footer_video" muted="" loop="" autoplay src="{{ url_for('static', filename='video/footer2.mp4') }}" type="video/mp4">
+</video>
+<p class="header">AIMetadataExtractor</p>
+<div id="message-container"></div>
+    <div class="container">
+        <div class="drag-and-drop" id="drop-area">
+            <p>Drag and drop an image</p>
+            <label for="file-upload" class="upload-button">Browse File</label>
+            <input id="file-upload" type="file" />
+            <img id="uploaded-image" />
+        </div>
+    </div>
+      <div class="container2" style="display: none;">
+        <div class="image-display">
+            <div class="image-container">
+		        <div class="overlay-text" id="overlay-text"></div>
+            </div>
+            <div class="image-info-box" id="image-info-box" style="display: none;">
+                <h3>Image Information</h3>
+            <div id="image-info"></div>
+        </div>
+        </div>
+    </div>
+<footer class="footer">
+<div class="footer_copyright">
+    <p>  &copy; 2025 - Heck.</p>
+</div>
+</footer>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
