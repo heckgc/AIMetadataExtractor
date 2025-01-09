@@ -16,7 +16,6 @@ class MainTestCase(unittest.TestCase):
     def test_get_request(self):
         response = self.app.get('/')
         self.assertEqual(response.status_code, 200)
-        # self.assertIn(b'<form', response.data)
 
     def test_post_request_with_valid_image(self):
         with open('tests/test_image.png', 'rb') as img:
