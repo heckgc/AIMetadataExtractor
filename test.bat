@@ -1,6 +1,4 @@
 @echo off
-REM filepath: /d:/aiwaifu/AIMetadataExtractor/test.bat
-
 REM Set the PYTHONPATH to include the src directory
 set PYTHONPATH=%CD%\src
 

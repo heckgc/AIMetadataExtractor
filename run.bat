@@ -1,6 +1,4 @@
 @echo off
-REM filepath: /d:/aiwaifu/AIMetadataExtractor/install.bat
-
 REM Create virtual environment and install dependencies
 echo Creating virtual environment...
 python -m venv .venv
