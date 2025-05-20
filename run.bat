@@ -8,4 +8,5 @@ echo Installing dependencies...
 
 REM Run the application
 echo Running the application...
-.venv\Scripts\activate.bat
+.venv\Scripts\python src/main.py
+

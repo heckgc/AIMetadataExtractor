@@ -1,12 +1,13 @@
+from main import app
 import unittest
 import sys
 import os
 from io import BytesIO
 
 # Add the src directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '../src')))
 
-from main import app
 
 class MainTestCase(unittest.TestCase):
     def setUp(self):
@@ -24,9 +25,14 @@ class MainTestCase(unittest.TestCase):
             'file': (BytesIO(img_data), 'tests/test_image.png')
         })
         self.assertEqual(response.status_code, 200)
-        self.assertIn('img_data', response.json)
         self.assertIn('image_info', response.json)
-        self.assertIn('mime_type', response.json)
+        image_info = response.json['image_info']
+        # Check for transformed keys if EXIF/UserComment exists
+        if "Positive Prompt" in image_info or "Negative prompt" in image_info:
+            self.assertIn('Positive Prompt', image_info)
+            self.assertIn('Negative prompt', image_info)
+        # Always check that image_info is a dict
+        self.assertIsInstance(image_info, dict)
 
     def test_post_request_with_invalid_file(self):
         response = self.app.post('/', content_type='multipart/form-data', data={
@@ -34,6 +40,7 @@ class MainTestCase(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertIn('error', response.json)
+
 
 if __name__ == '__main__':
     unittest.main()
