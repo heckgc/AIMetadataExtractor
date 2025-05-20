@@ -6,7 +6,7 @@ PYTHON = $(VENV_DIR)/bin/python
 PIP = $(VENV_DIR)/bin/pip
 
 # Targets
-.PHONY: all install run test clean
+.PHONY: all install run test uitest clean
 
 all: install run
 
@@ -21,8 +21,13 @@ run:
     $(PYTHON) src/main.py
 
 test:
-    @echo "Running tests..."
+    @echo "Running unit tests..."
     $(PYTHON) -m unittest discover -s tests -p "test_*.py"
+    @$(MAKE) uitest
+
+uitest:
+    @echo "Running Playwright UI test..."
+    $(PYTHON) tests/test_ui_playright.py
 
 clean:
     @echo "Cleaning up..."
