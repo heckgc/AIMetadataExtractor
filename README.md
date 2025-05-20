@@ -25,10 +25,6 @@ They cover the core logic and can be run with:
 ```bash
 make test
 ```
-or, if you prefer to run only unit tests:
-```bash
-make test  # (unit tests run first, then UI tests)
-```
 
 #### UI Tests (Playwright)
 
@@ -38,6 +34,13 @@ To run the UI test alone:
 
 ```bash
 make uitest
+```
+
+##### Windows
+Windows will run both unit and UI at the same time.
+
+```bash
+test.bat
 ```
 
 **Requirements:**  
@@ -76,8 +79,12 @@ You can use the provided `Makefile` (Linux/macOS) or `run.bat` (Windows) to set 
 **On Windows:**
 1. Create the virtual environment and install dependencies:
     ```bat
-    run.bat
+    install.bat
     ```
+2. Run the service:
+	```bat
+	run.bat
+	```
 
 ### Access the App
 
