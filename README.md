@@ -1,5 +1,5 @@
 # AIMetadataExtractor
-Allows you to extract embedded metadata information from images generated from AI sources
+Allows you to extract embedded metadata information from media generated from AI sources. It now supports Images and Videos.
 
 # Live preview
 It is available at https://heckgc.pythonanywhere.com/ for live preview.
@@ -103,6 +103,8 @@ You can still use `make test` or `test.bat` to run all tests as described above.
 
 ## Versions
 This is should be version 1.0, but there could be improvements in the future.
+1.0 Images
+1.1 Images and Videos
 
 ## Thank you
 Thank you for taking a look.
