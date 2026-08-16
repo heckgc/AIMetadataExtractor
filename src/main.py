@@ -1,5 +1,11 @@
 import logging
+import base64
+import mimetypes
+import os
 import re
+import subprocess
+import tempfile
+from pathlib import Path
 from flask import Flask, request, render_template, jsonify
 from PIL import Image, ExifTags
 import io
@@ -9,74 +15,211 @@ import json
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_image():
     if request.method == 'POST':
-        file = request.files['file']
-        if file:
+        file = request.files.get('file')
+        if not file:
+            return jsonify({'error': 'No file uploaded.'})
+
+        try:
+            logging.debug("Received file: %s", file.filename)
+
+            file_data = file.read()
+            logging.debug("Read %d bytes from the uploaded file.", len(file_data))
+
+            if not file_data:
+                return jsonify({'error': 'Uploaded file is empty.'})
+
+            preview_data = base64.b64encode(file_data).decode('utf-8')
+            media_kind = None
+            mime_type = file.content_type or mimetypes.guess_type(file.filename)[0]
+
             try:
-                logging.debug("Received file: %s", file.filename)
-
-                # Read the image file
-                img_data = file.read()
+                img = Image.open(io.BytesIO(file_data))
                 logging.debug(
-                    "Read %d bytes from the uploaded file.", len(img_data))
+                    "Image opened successfully: format=%s, size=%s, mode=%s", img.format, img.size, img.mode)
+                image_info = extract_image_metadata(img)
+                media_kind = 'image'
+                mime_type = Image.MIME.get(img.format, mime_type or 'image/*')
+            except Exception as image_error:
+                logging.debug("Image parsing failed, trying video metadata: %s", str(image_error))
+                image_info = extract_video_metadata(file_data, file.filename)
+                media_kind = 'video'
+                mime_type = mime_type or 'video/mp4'
 
-                # Attempt to open the image
-                try:
-                    img = Image.open(io.BytesIO(img_data))
-                    logging.debug(
-                        "Image opened successfully: format=%s, size=%s, mode=%s", img.format, img.size, img.mode)
-                except Exception as e:
-                    logging.error("Failed to open image: %s", str(e))
-                    return jsonify({'error': f"Failed to open image: {str(e)}"})
+            if isinstance(image_info, dict) and image_info.get('error'):
+                logging.error("Failed to process file: %s", image_info.get('error'))
+                return jsonify({'error': image_info['error']})
 
-                # Extract image info (metadata)
-                img_info = img.info
+            # Ensure image_info is sanitized before returning
+            image_info = sanitize_metadata(image_info) if isinstance(image_info, dict) else {}
+            
+            response = {
+                'image_info': image_info,
+                'mime_type': mime_type,
+                'media_kind': media_kind,
+                'file_data': preview_data,
+            }
+            return jsonify(response)
 
-                if (check_and_decode_exif(img_data)):
-                    img_info = read_exif(img)
-                    img_info = transform_image_info(
-                        img_info["image_info"])
-                else:
-                    logging.debug("No EXIF data found in the image.")
-
-                # Prepare the response
-                response = {
-                    # 'img_data': img_base64,  # base64 encoded image
-                    # image metadata
-                    'image_info': img_info,
-                    # 'mime_type': file.content_type,  # MIME type for the image
-                    # EXIF data
-                    # 'exif_data': read_info_from_image(img)
-                }
-                return jsonify(response)
-
-            except Exception as e:
-                logging.error("An error occurred: %s", str(e))
-                return jsonify({'error': str(e)})
+        except Exception as e:
+            error_msg = str(e)
+            logging.error("An error occurred: %s", error_msg)
+            return jsonify({'error': error_msg})
 
     # Show the form to upload an image on the first load
     return render_template('index.html')
 
 
 def transform_image_info(image_info):
+    if not isinstance(image_info, dict):
+        return {}
+
+    # Make a copy to avoid modifying the original
+    image_info = dict(image_info)
+    
     # Extract the UserComment field
-    user_comment = image_info.get("UserComment", "")
+    user_comment = image_info.pop("UserComment", None)
+
+    if not user_comment:
+        return image_info
 
     # Parse the UserComment into a structured JSON object
     parsed_comment = parse_user_comment(user_comment)
 
     # Merge the parsed UserComment back into the image_info dictionary
-    image_info.update(parsed_comment)
-
-    # Remove the original UserComment field
-    del image_info["UserComment"]
+    if parsed_comment:
+        image_info.update(parsed_comment)
 
     return image_info
+
+
+def sanitize_metadata(value):
+    """
+    Recursively sanitize metadata values to ensure they are JSON serializable.
+    Converts bytes to strings, handles collections, and converts unsupported types to strings.
+    """
+    if isinstance(value, dict):
+        return {str(key): sanitize_metadata(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [sanitize_metadata(item) for item in value]
+
+    if isinstance(value, bytes):
+        return decode_exif(value)
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    # For any other type, convert to string
+    try:
+        return str(value)
+    except Exception as e:
+        logging.warning("Failed to convert value to string: %s, returning empty string", str(e))
+        return ""
+
+
+def extract_image_metadata(image: Image.Image):
+    logging.debug("Reading image metadata.")
+    image_info = sanitize_metadata(getattr(image, "info", {}))
+
+    if hasattr(image, "getexif"):
+        exif_data = image.getexif()
+        if exif_data:
+            exif_info = {}
+            for tag, value in exif_data.items():
+                tag_name = ExifTags.TAGS.get(tag, f"Unknown Tag ({tag})")
+                sanitized_value = sanitize_metadata(value)
+                exif_info[tag_name] = sanitized_value
+            
+            # Ensure all values in exif_info are properly sanitized before transform
+            exif_info = sanitize_metadata(exif_info)
+            image_info.update(transform_image_info(exif_info))
+
+    return image_info
+
+
+def extract_video_metadata(file_data, filename):
+    suffix = Path(filename).suffix or '.mp4'
+    temp_file_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+            temp_file.write(file_data)
+            temp_file_path = temp_file.name
+
+        probe = subprocess.run(
+            [
+                'ffprobe',
+                '-v', 'quiet',
+                '-print_format', 'json',
+                '-show_format',
+                '-show_streams',
+                temp_file_path,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        probe_data = json.loads(probe.stdout or '{}')
+        format_info = probe_data.get('format', {})
+        streams = probe_data.get('streams', [])
+        video_stream = next((stream for stream in streams if stream.get('codec_type') == 'video'), {})
+        audio_stream = next((stream for stream in streams if stream.get('codec_type') == 'audio'), {})
+
+        metadata = {
+            'file_name': filename,
+            'container': format_info.get('format_name'),
+            'container_long_name': format_info.get('format_long_name'),
+            'duration': format_info.get('duration'),
+            'size': format_info.get('size'),
+            'bit_rate': format_info.get('bit_rate'),
+            'tags': sanitize_metadata(format_info.get('tags', {})),
+            'streams': sanitize_metadata(streams),
+        }
+
+        if video_stream:
+            metadata['video_stream'] = sanitize_metadata({
+                'codec_name': video_stream.get('codec_name'),
+                'codec_long_name': video_stream.get('codec_long_name'),
+                'width': video_stream.get('width'),
+                'height': video_stream.get('height'),
+                'pix_fmt': video_stream.get('pix_fmt'),
+                'r_frame_rate': video_stream.get('r_frame_rate'),
+                'avg_frame_rate': video_stream.get('avg_frame_rate'),
+                'bit_rate': video_stream.get('bit_rate'),
+                'nb_frames': video_stream.get('nb_frames'),
+            })
+
+        if audio_stream:
+            metadata['audio_stream'] = sanitize_metadata({
+                'codec_name': audio_stream.get('codec_name'),
+                'codec_long_name': audio_stream.get('codec_long_name'),
+                'channels': audio_stream.get('channels'),
+                'channel_layout': audio_stream.get('channel_layout'),
+                'sample_rate': audio_stream.get('sample_rate'),
+                'bit_rate': audio_stream.get('bit_rate'),
+            })
+
+        return metadata
+
+    except FileNotFoundError:
+        logging.error('ffprobe is not available on this system.')
+        return {'error': 'ffprobe is not available on this system.'}
+    except subprocess.CalledProcessError as exc:
+        logging.error('Failed to read video metadata: %s', exc.stderr or str(exc))
+        return {'error': f'Failed to read video metadata: {exc.stderr or str(exc)}'}
+    except json.JSONDecodeError as exc:
+        logging.error('Failed to decode ffprobe output: %s', str(exc))
+        return {'error': f'Failed to decode video metadata: {str(exc)}'}
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 
 def parse_user_comment(user_comment):
@@ -84,6 +227,16 @@ def parse_user_comment(user_comment):
     Parse the UserComment field into a structured JSON object.
     """
     try:
+        # Ensure user_comment is a string
+        if user_comment is None:
+            return {}
+        
+        if isinstance(user_comment, bytes):
+            user_comment = decode_exif(user_comment)
+        
+        if not isinstance(user_comment, str):
+            user_comment = str(user_comment)
+
         # Split the string into lines and remove empty lines
         lines = [line.strip()
                  for line in user_comment.split("\n") if line.strip()]
@@ -117,8 +270,8 @@ def parse_user_comment(user_comment):
 
         return result
     except Exception as e:
-        print(f"Error parsing UserComment: {e}")
-        return None
+        logging.error(f"Error parsing UserComment: {e}")
+        return {}
 
 
 def check_and_decode_exif(image_data):
@@ -158,6 +311,9 @@ def read_exif(image: Image.Image):
 
 def decode_exif(exif_data):
     try:
+        if not isinstance(exif_data, bytes):
+            return str(exif_data)
+        
         # Remove null bytes
         cleaned_data = exif_data.replace(b'\x00', b'')  # Remove null bytes
 
@@ -168,7 +324,6 @@ def decode_exif(exif_data):
         if decoded_data.startswith("UNICODE"):
             decoded_data = decoded_data[len("UNICODE"):].strip()
 
-        # logging.debug("Decoded EXIF data: %s", decoded_data)
         return decoded_data
     except Exception as e:
         logging.error("Error decoding EXIF data: %s", str(e))
